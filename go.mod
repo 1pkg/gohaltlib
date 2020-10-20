@@ -1,8 +1,9 @@
-module github.com/1pkg/gohalt
+module github.com/1pkg/gohaltlib
 
 go 1.15
 
 require (
+	github.com/1pkg/gohalt v0.2.0
 	github.com/CloudyKit/jet/v3 v3.0.1 // indirect
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/ajg/form v1.5.1 // indirect

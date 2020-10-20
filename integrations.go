@@ -1,4 +1,4 @@
-package gohalt
+package gohaltlib
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"net/rpc"
 	"strings"
 
+	"github.com/1pkg/gohalt"
 	"github.com/astaxie/beego"
 	beegoctx "github.com/astaxie/beego/context"
 	"github.com/gin-gonic/gin"
@@ -40,7 +41,7 @@ type GinWith func(*gin.Context) context.Context
 
 func GinWithIP(gctx *gin.Context) context.Context {
 	req := gctx.Request
-	return WithKey(req.Context(), ip(req))
+	return gohalt.WithKey(req.Context(), ip(req))
 }
 
 type GinOn func(*gin.Context, error)
@@ -49,9 +50,9 @@ func GinOnAbort(gctx *gin.Context, err error) {
 	_ = gctx.AbortWithError(http.StatusTooManyRequests, err)
 }
 
-func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc {
+func NewMiddlewareGin(thr gohalt.Throttler, with GinWith, on GinOn) gin.HandlerFunc {
 	return func(gctx *gin.Context) {
-		r := NewRunnerSync(with(gctx), thr)
+		r := gohalt.NewRunnerSync(with(gctx), thr)
 		r.Run(func(ctx context.Context) error {
 			gctx.Next()
 			return nil
@@ -65,7 +66,7 @@ func NewMiddlewareGin(thr Throttler, with GinWith, on GinOn) gin.HandlerFunc {
 type StdWith func(*http.Request) context.Context
 
 func StdWithIP(req *http.Request) context.Context {
-	return WithKey(req.Context(), ip(req))
+	return gohalt.WithKey(req.Context(), ip(req))
 }
 
 type StdOn func(http.ResponseWriter, error)
@@ -74,9 +75,9 @@ func StdOnAbort(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusTooManyRequests)
 }
 
-func NewMiddlewareStd(h http.Handler, thr Throttler, with StdWith, on StdOn) http.Handler {
+func NewMiddlewareStd(h http.Handler, thr gohalt.Throttler, with StdWith, on StdOn) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		r := NewRunnerSync(with(req), thr)
+		r := gohalt.NewRunnerSync(with(req), thr)
 		r.Run(func(ctx context.Context) error {
 			h.ServeHTTP(w, req)
 			return nil
@@ -91,7 +92,7 @@ type EchoWith func(echo.Context) context.Context
 
 func EchoWithIP(ectx echo.Context) context.Context {
 	req := ectx.Request()
-	return WithKey(req.Context(), ip(req))
+	return gohalt.WithKey(req.Context(), ip(req))
 }
 
 type EchoOn func(echo.Context, error) error
@@ -100,10 +101,10 @@ func EchoOnAbort(ectx echo.Context, err error) error {
 	return ectx.String(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareEcho(thr Throttler, with EchoWith, on EchoOn) echo.MiddlewareFunc {
+func NewMiddlewareEcho(thr gohalt.Throttler, with EchoWith, on EchoOn) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) (err error) {
-			r := NewRunnerSync(with(ectx), thr)
+			r := gohalt.NewRunnerSync(with(ectx), thr)
 			r.Run(func(ctx context.Context) error {
 				err = next(ectx)
 				return nil
@@ -120,7 +121,7 @@ type BeegoWith func(*beegoctx.Context) context.Context
 
 func BeegoWithIP(bctx *beegoctx.Context) context.Context {
 	req := bctx.Request
-	return WithKey(req.Context(), ip(req))
+	return gohalt.WithKey(req.Context(), ip(req))
 }
 
 type BeegoOn func(*beegoctx.Context, error)
@@ -129,10 +130,12 @@ func BeegoOnAbort(bctx *beegoctx.Context, err error) {
 	bctx.Abort(http.StatusTooManyRequests, err.Error())
 }
 
-func NewMiddlewareBeego(thr Throttler, with BeegoWith, on BeegoOn) beego.FilterFunc {
+func NewMiddlewareBeego(thr gohalt.Throttler, with BeegoWith, on BeegoOn) beego.FilterFunc {
 	return func(bctx *beegoctx.Context) {
-		r := NewRunnerSync(with(bctx), thr)
-		r.Run(nope)
+		r := gohalt.NewRunnerSync(with(bctx), thr)
+		r.Run(func(context.Context) error {
+			return nil
+		})
 		if err := r.Result(); err != nil {
 			on(bctx, err)
 		}
@@ -151,10 +154,10 @@ func KitOnAbort(err error) (interface{}, error) {
 	return nil, fmt.Errorf("%d: %w", http.StatusTooManyRequests, err)
 }
 
-func NewMiddlewareKit(thr Throttler, with KitWith, on KitOn) endpoint.Middleware {
+func NewMiddlewareKit(thr gohalt.Throttler, with KitWith, on KitOn) endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, req interface{}) (resp interface{}, err error) {
-			r := NewRunnerSync(with(ctx, req), thr)
+			r := gohalt.NewRunnerSync(with(ctx, req), thr)
 			r.Run(func(ctx context.Context) error {
 				resp, err = next(ctx, req)
 				return nil
@@ -179,7 +182,7 @@ func MuxOnAbort(w http.ResponseWriter, err error) {
 	StdOnAbort(w, err)
 }
 
-func NewMiddlewareMux(h http.Handler, thr Throttler, with MuxWith, on MuxOn) http.Handler {
+func NewMiddlewareMux(h http.Handler, thr gohalt.Throttler, with MuxWith, on MuxOn) http.Handler {
 	return NewMiddlewareStd(h, thr, StdWith(with), StdOn(on))
 }
 
@@ -195,7 +198,7 @@ func RouterOnAbort(w http.ResponseWriter, err error) {
 	StdOnAbort(w, err)
 }
 
-func NewMiddlewareRouter(h http.Handler, thr Throttler, with RouterWith, on RouterOn) http.Handler {
+func NewMiddlewareRouter(h http.Handler, thr gohalt.Throttler, with RouterWith, on RouterOn) http.Handler {
 	return NewMiddlewareStd(h, thr, StdWith(with), StdOn(on))
 }
 
@@ -211,7 +214,7 @@ func RevealWithIP(rc *revel.Controller) context.Context {
 	for _, key := range keys {
 		stdreq.Header.Add(key, req.Header.Get(key))
 	}
-	return WithKey(req.Context(), ip(stdreq))
+	return gohalt.WithKey(req.Context(), ip(stdreq))
 }
 
 type RevealOn func(error) revel.Result
@@ -222,9 +225,9 @@ func RevealOnAbort(rc *revel.Controller, err error) revel.Result {
 	return result
 }
 
-func NewMiddlewareRevel(thr Throttler, with RevealWith, on RevealOn) revel.Filter {
+func NewMiddlewareRevel(thr gohalt.Throttler, with RevealWith, on RevealOn) revel.Filter {
 	return func(rc *revel.Controller, chain []revel.Filter) {
-		r := NewRunnerSync(with(rc), thr)
+		r := gohalt.NewRunnerSync(with(rc), thr)
 		r.Run(func(ctx context.Context) error {
 			chain[0](rc, chain[1:])
 			return nil
@@ -239,7 +242,7 @@ type IrisWith func(iris.Context) context.Context
 
 func IrisWithIP(ictx iris.Context) context.Context {
 	req := ictx.Request()
-	return WithKey(req.Context(), ip(req))
+	return gohalt.WithKey(req.Context(), ip(req))
 }
 
 type IrisOn func(iris.Context, error)
@@ -249,9 +252,9 @@ func IrisOnAbort(ictx iris.Context, err error) {
 	_, _ = ictx.WriteString(err.Error())
 }
 
-func NewMiddlewareIris(thr Throttler, with IrisWith, on IrisOn) iris.Handler {
+func NewMiddlewareIris(thr gohalt.Throttler, with IrisWith, on IrisOn) iris.Handler {
 	return func(ictx iris.Context) {
-		r := NewRunnerSync(with(ictx), thr)
+		r := gohalt.NewRunnerSync(with(ictx), thr)
 		r.Run(func(ctx context.Context) error {
 			ictx.Next()
 			return nil
@@ -272,7 +275,7 @@ func FastWithIPBackground(fctx *fasthttp.RequestCtx) context.Context {
 	fctx.Request.Header.VisitAll(func(key []byte, val []byte) {
 		stdreq.Header.Add(string(key), string(val))
 	})
-	return WithKey(context.Background(), ip(stdreq))
+	return gohalt.WithKey(context.Background(), ip(stdreq))
 }
 
 type FastOn func(*fasthttp.RequestCtx, error)
@@ -281,9 +284,9 @@ func FastOnAbort(fctx *fasthttp.RequestCtx, err error) {
 	fctx.Error(err.Error(), fasthttp.StatusTooManyRequests)
 }
 
-func NewMiddlewareFast(h fasthttp.RequestHandler, thr Throttler, with FastWith, on FastOn) fasthttp.RequestHandler {
+func NewMiddlewareFast(h fasthttp.RequestHandler, thr gohalt.Throttler, with FastWith, on FastOn) fasthttp.RequestHandler {
 	return func(fctx *fasthttp.RequestCtx) {
-		r := NewRunnerSync(with(fctx), thr)
+		r := gohalt.NewRunnerSync(with(fctx), thr)
 		r.Run(func(ctx context.Context) error {
 			h(fctx)
 			return nil
@@ -308,14 +311,14 @@ func RoundTripperStdOnAbort(err error) error {
 
 type rtstd struct {
 	http.RoundTripper
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RoundTripperStdWith
 	on   RoundTripperStdOn
 }
 
 func NewRoundTripperStd(
 	rt http.RoundTripper,
-	thr Throttler,
+	thr gohalt.Throttler,
 	with RoundTripperStdWith,
 	on RoundTripperStdOn,
 ) http.RoundTripper {
@@ -323,7 +326,7 @@ func NewRoundTripperStd(
 }
 
 func (rt rtstd) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	r := NewRunnerSync(rt.with(req), rt.thr)
+	r := gohalt.NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
 		resp, err = rt.RoundTripper.RoundTrip(req)
 		return nil
@@ -352,14 +355,14 @@ func RoundTripperFastOnAbort(err error) error {
 
 type rtfast struct {
 	RoundTripperFast
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RoundTripperFastWith
 	on   RoundTripperFastOn
 }
 
 func NewRoundTripperFast(
 	rt RoundTripperFast,
-	thr Throttler,
+	thr gohalt.Throttler,
 	with RoundTripperFastWith,
 	on RoundTripperFastOn,
 ) RoundTripperFast {
@@ -367,7 +370,7 @@ func NewRoundTripperFast(
 }
 
 func (rt rtfast) Do(req *fasthttp.Request, resp *fasthttp.Response) (err error) {
-	r := NewRunnerSync(rt.with(req), rt.thr)
+	r := gohalt.NewRunnerSync(rt.with(req), rt.thr)
 	r.Run(func(ctx context.Context) error {
 		err = rt.RoundTripperFast.Do(req, resp)
 		return nil
@@ -392,17 +395,17 @@ func RPCCodecOnAbort(err error) error {
 
 type rpcc struct {
 	rpc.ClientCodec
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RPCCodecWith
 	on   RPCCodecOn
 }
 
-func NewRPCClientCodec(cc rpc.ClientCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ClientCodec {
+func NewRPCClientCodec(cc rpc.ClientCodec, thr gohalt.Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ClientCodec {
 	return rpcc{ClientCodec: cc, thr: thr, with: with, on: on}
 }
 
 func (cc rpcc) WriteRequest(req *rpc.Request, msg interface{}) (err error) {
-	r := NewRunnerSync(cc.with(req, nil, msg), cc.thr)
+	r := gohalt.NewRunnerSync(cc.with(req, nil, msg), cc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cc.ClientCodec.WriteRequest(req, msg)
 		return nil
@@ -414,7 +417,7 @@ func (cc rpcc) WriteRequest(req *rpc.Request, msg interface{}) (err error) {
 }
 
 func (cc rpcc) ReadResponseHeader(resp *rpc.Response) (err error) {
-	r := NewRunnerSync(cc.with(nil, resp, nil), cc.thr)
+	r := gohalt.NewRunnerSync(cc.with(nil, resp, nil), cc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cc.ClientCodec.ReadResponseHeader(resp)
 		return nil
@@ -427,17 +430,17 @@ func (cc rpcc) ReadResponseHeader(resp *rpc.Response) (err error) {
 
 type rpcs struct {
 	rpc.ServerCodec
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RPCCodecWith
 	on   RPCCodecOn
 }
 
-func NewRPCServerCodec(sc rpc.ServerCodec, thr Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ServerCodec {
+func NewRPCServerCodec(sc rpc.ServerCodec, thr gohalt.Throttler, with RPCCodecWith, on RPCCodecOn) rpc.ServerCodec {
 	return rpcs{ServerCodec: sc, thr: thr, with: with, on: on}
 }
 
 func (sc rpcs) ReadRequestHeader(req *rpc.Request) (err error) {
-	r := NewRunnerSync(sc.with(req, nil, nil), sc.thr)
+	r := gohalt.NewRunnerSync(sc.with(req, nil, nil), sc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = sc.ServerCodec.ReadRequestHeader(req)
 		return nil
@@ -449,7 +452,7 @@ func (sc rpcs) ReadRequestHeader(req *rpc.Request) (err error) {
 }
 
 func (sc rpcs) WriteResponse(resp *rpc.Response, msg interface{}) (err error) {
-	r := NewRunnerSync(sc.with(nil, resp, msg), sc.thr)
+	r := gohalt.NewRunnerSync(sc.with(nil, resp, msg), sc.thr)
 	r.Run(func(ctx context.Context) error {
 		err = sc.ServerCodec.WriteResponse(resp, msg)
 		return nil
@@ -474,17 +477,17 @@ func GRPCStreamAbort(err error) error {
 
 type grpccs struct {
 	grpc.ClientStream
-	thr  Throttler
+	thr  gohalt.Throttler
 	with GRPCStreamWith
 	on   GRPCStreamOn
 }
 
-func NewGRPCClientStream(cs grpc.ClientStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ClientStream {
+func NewGRPCClientStream(cs grpc.ClientStream, thr gohalt.Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ClientStream {
 	return grpccs{ClientStream: cs, thr: thr, with: with, on: on}
 }
 
 func (cs grpccs) SendMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
+	r := gohalt.NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cs.ClientStream.SendMsg(msg)
 		return nil
@@ -496,7 +499,7 @@ func (cs grpccs) SendMsg(msg interface{}) (err error) {
 }
 
 func (cs grpccs) RecvMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
+	r := gohalt.NewRunnerSync(cs.with(cs.Context(), msg), cs.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cs.ClientStream.RecvMsg(msg)
 		return nil
@@ -509,17 +512,17 @@ func (cs grpccs) RecvMsg(msg interface{}) (err error) {
 
 type grpcss struct {
 	grpc.ServerStream
-	thr  Throttler
+	thr  gohalt.Throttler
 	with GRPCStreamWith
 	on   GRPCStreamOn
 }
 
-func NewGrpServerStream(ss grpc.ServerStream, thr Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ServerStream {
+func NewGrpServerStream(ss grpc.ServerStream, thr gohalt.Throttler, with GRPCStreamWith, on GRPCStreamOn) grpc.ServerStream {
 	return grpcss{ServerStream: ss, thr: thr, with: with, on: on}
 }
 
 func (ss grpcss) SendMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
+	r := gohalt.NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
 	r.Run(func(ctx context.Context) error {
 		err = ss.ServerStream.SendMsg(msg)
 		return nil
@@ -531,7 +534,7 @@ func (ss grpcss) SendMsg(msg interface{}) (err error) {
 }
 
 func (ss grpcss) RecvMsg(msg interface{}) (err error) {
-	r := NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
+	r := gohalt.NewRunnerSync(ss.with(ss.Context(), msg), ss.thr)
 	r.Run(func(ctx context.Context) error {
 		err = ss.ServerStream.RecvMsg(msg)
 		return nil
@@ -562,12 +565,12 @@ func MicroOnAbort(err error) error {
 
 type microcli struct {
 	client.Client
-	thr  Throttler
+	thr  gohalt.Throttler
 	with MicroClientWith
 	on   MicroOn
 }
 
-func NewMicroClient(thr Throttler, with MicroClientWith, on MicroOn) client.Wrapper {
+func NewMicroClient(thr gohalt.Throttler, with MicroClientWith, on MicroOn) client.Wrapper {
 	return func(cli client.Client) client.Client {
 		return microcli{Client: cli, thr: thr, with: with, on: on}
 	}
@@ -579,7 +582,7 @@ func (cli microcli) Call(
 	resp interface{},
 	opts ...client.CallOption,
 ) (err error) {
-	r := NewRunnerSync(cli.with(ctx, req), cli.thr)
+	r := gohalt.NewRunnerSync(cli.with(ctx, req), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		err = cli.Client.Call(ctx, req, resp, opts...)
 		return nil
@@ -590,10 +593,10 @@ func (cli microcli) Call(
 	return err
 }
 
-func NewMicroHandler(thr Throttler, with MicroServerWith, on MicroOn) server.HandlerWrapper {
+func NewMicroHandler(thr gohalt.Throttler, with MicroServerWith, on MicroOn) server.HandlerWrapper {
 	return func(h server.HandlerFunc) server.HandlerFunc {
 		return func(ctx context.Context, req server.Request, resp interface{}) (err error) {
-			r := NewRunnerSync(with(ctx, req), thr)
+			r := gohalt.NewRunnerSync(with(ctx, req), thr)
 			r.Run(func(ctx context.Context) error {
 				err = h(ctx, req, resp)
 				return nil
@@ -620,7 +623,7 @@ func NetConnAbort(err error) error {
 
 type netconn struct {
 	net.Conn
-	thr  Throttler
+	thr  gohalt.Throttler
 	with NetConnWith
 	on   NetConnOn
 }
@@ -635,7 +638,7 @@ const (
 	NetConnModeWrite NetConnMode = iota
 )
 
-func NewNetConn(conn net.Conn, thr Throttler, with NetConnWith, on NetConnOn, mode NetConnMode) net.Conn {
+func NewNetConn(conn net.Conn, thr gohalt.Throttler, with NetConnWith, on NetConnOn, mode NetConnMode) net.Conn {
 	switch mode {
 	case NetConnModeRead:
 		return connread{
@@ -657,7 +660,7 @@ func NewNetConn(conn net.Conn, thr Throttler, with NetConnWith, on NetConnOn, mo
 }
 
 func (conn connread) Read(b []byte) (n int, err error) {
-	r := NewRunnerSync(conn.with(), conn.thr)
+	r := gohalt.NewRunnerSync(conn.with(), conn.thr)
 	r.Run(func(ctx context.Context) error {
 		n, err = conn.Conn.Read(b)
 		return nil
@@ -669,7 +672,7 @@ func (conn connread) Read(b []byte) (n int, err error) {
 }
 
 func (conn connwrite) Write(b []byte) (n int, err error) {
-	r := NewRunnerSync(conn.with(), conn.thr)
+	r := gohalt.NewRunnerSync(conn.with(), conn.thr)
 	r.Run(func(ctx context.Context) error {
 		n, err = conn.Conn.Read(b)
 		return nil
@@ -690,7 +693,7 @@ type SQLClient interface {
 type SQLClientWith func(context.Context, string, ...interface{}) context.Context
 
 func SQLClientQuery(ctx context.Context, query string, args ...interface{}) context.Context {
-	return WithKey(ctx, query)
+	return gohalt.WithKey(ctx, query)
 }
 
 type SQLClientOn func(error) error
@@ -701,17 +704,17 @@ func SQLClientAbort(err error) error {
 
 type sqlcli struct {
 	SQLClient
-	thr  Throttler
+	thr  gohalt.Throttler
 	with SQLClientWith
 	on   SQLClientOn
 }
 
-func NewSQLClient(cli SQLClient, thr Throttler, with SQLClientWith, on SQLClientOn) SQLClient {
+func NewSQLClient(cli SQLClient, thr gohalt.Throttler, with SQLClientWith, on SQLClientOn) SQLClient {
 	return sqlcli{SQLClient: cli, thr: thr, with: with, on: on}
 }
 
 func (cli sqlcli) ExecContext(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
-	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r := gohalt.NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		result, err = cli.SQLClient.ExecContext(ctx, query, args...)
 		return nil
@@ -723,7 +726,7 @@ func (cli sqlcli) ExecContext(ctx context.Context, query string, args ...interfa
 }
 
 func (cli sqlcli) PrepareContext(ctx context.Context, query string) (smt *sql.Stmt, err error) {
-	r := NewRunnerSync(cli.with(ctx, query), cli.thr)
+	r := gohalt.NewRunnerSync(cli.with(ctx, query), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		smt, err = cli.SQLClient.PrepareContext(ctx, query)
 		return nil
@@ -735,7 +738,7 @@ func (cli sqlcli) PrepareContext(ctx context.Context, query string) (smt *sql.St
 }
 
 func (cli sqlcli) QueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
-	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r := gohalt.NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		rows, err = cli.SQLClient.QueryContext(ctx, query, args...)
 		return nil
@@ -747,7 +750,7 @@ func (cli sqlcli) QueryContext(ctx context.Context, query string, args ...interf
 }
 
 func (cli sqlcli) QueryRowContext(ctx context.Context, query string, args ...interface{}) (row *sql.Row) {
-	r := NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
+	r := gohalt.NewRunnerSync(cli.with(ctx, query, args...), cli.thr)
 	r.Run(func(ctx context.Context) error {
 		row = cli.SQLClient.QueryRowContext(ctx, query, args...)
 		return nil
@@ -772,12 +775,12 @@ func RWAbort(err error) error {
 
 type reader struct {
 	io.Reader
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RWWith
 	on   RWOn
 }
 
-func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) io.Reader {
+func NewReader(r io.Reader, thr gohalt.Throttler, with RWWith, on RWOn) io.Reader {
 	return reader{
 		Reader: r,
 		thr:    thr,
@@ -787,7 +790,7 @@ func NewReader(r io.Reader, thr Throttler, with RWWith, on RWOn) io.Reader {
 }
 
 func (r reader) Read(p []byte) (n int, err error) {
-	rs := NewRunnerSync(r.with(), r.thr)
+	rs := gohalt.NewRunnerSync(r.with(), r.thr)
 	rs.Run(func(context.Context) error {
 		n, err = r.Reader.Read(p)
 		return nil
@@ -800,12 +803,12 @@ func (r reader) Read(p []byte) (n int, err error) {
 
 type writer struct {
 	io.Writer
-	thr  Throttler
+	thr  gohalt.Throttler
 	with RWWith
 	on   RWOn
 }
 
-func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) io.Writer {
+func NewWriter(w io.Writer, thr gohalt.Throttler, with RWWith, on RWOn) io.Writer {
 	return writer{
 		Writer: w,
 		thr:    thr,
@@ -815,7 +818,7 @@ func NewWriter(w io.Writer, thr Throttler, with RWWith, on RWOn) io.Writer {
 }
 
 func (w writer) Write(p []byte) (n int, err error) {
-	r := NewRunnerSync(w.with(), w.thr)
+	r := gohalt.NewRunnerSync(w.with(), w.thr)
 	r.Run(func(context.Context) error {
 		n, err = w.Writer.Write(p)
 		return nil
