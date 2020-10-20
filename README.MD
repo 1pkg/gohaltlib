@@ -2,16 +2,19 @@
     <img src="https://raw.githubusercontent.com/1pkg/gohalt/master/gopher.png" alt="gohalt"/>
 </p>
 
-# Gohalt 👮‍♀🛑: Fast; Simple; Powerful; Go Throttler library
+# Gohaltlib 👮‍♀🔧: [Gohalt](https://github.com/1pkg/gohalt) 3rd Party Integrations library
 
-[![lint](https://github.com/1pkg/gohalt/workflows/lint/badge.svg)](https://github.com/1pkg/gohalt/actions?query=workflow%3Alint+branch%3Amaster+)
-[![test](https://github.com/1pkg/gohalt/workflows/test/badge.svg)](https://github.com/1pkg/gohalt/actions?query=workflow%3Atest+branch%3Amaster+)
-[![report](https://goreportcard.com/badge/github.com/1pkg/gohalt?cache=1)](https://goreportcard.com/report/github.com/1pkg/gohalt)
-[![version](https://img.shields.io/github/go-mod/go-version/1pkg/gohalt?cache=1)](https://github.com/1pkg/gohalt/blob/master/go.mod)
-[![license](https://img.shields.io/github/license/1pkg/gohalt?cache=1)](LICENSE)
-[![godoc](https://img.shields.io/badge/godoc-godoc-green?cache=1)](https://pkg.go.dev/github.com/1pkg/gohalt?tab=doc)
+[![lint](https://github.com/1pkg/gohaltlib/workflows/lint/badge.svg)](https://github.com/1pkg/gohaltlib/actions?query=workflow%3Alint+branch%3Amaster+)
+[![test](https://github.com/1pkg/gohaltlib/workflows/test/badge.svg)](https://github.com/1pkg/gohaltlib/actions?query=workflow%3Atest+branch%3Amaster+)
+[![report](https://goreportcard.com/badge/github.com/1pkg/gohaltlib?cache=1)](https://goreportcard.com/report/github.com/1pkg/gohaltlib)
+[![version](https://img.shields.io/github/go-mod/go-version/1pkg/gohaltlib?cache=1)](https://github.com/1pkg/gohaltlib/blob/master/go.mod)
+[![license](https://img.shields.io/github/license/1pkg/gohaltlib?cache=1)](LICENSE)
+[![godoc](https://img.shields.io/badge/godoc-godoc-green?cache=1)](https://pkg.go.dev/github.com/1pkg/gohaltlib?tab=doc)
 
 `go get -u github.com/1pkg/gohalt`
+`go get -u github.com/1pkg/gohaltlib`
+
+**Note:** in gohalt v0.3.0 all integrations were moved to separate gohaltlib repository to make base gohalt repository dependencies footprint small.
 
 ## Introduction
 
@@ -21,114 +24,12 @@ Gohalt is simple and convenient yet powerful and efficient throttling go library
 
 - [x] Blastly fast and efficient, Gohalt has minimal performance overhead, it was design with performance as the primary goal.
 - [x] Flexible and powerful, Gohalt supports numbers of different throttling strategies and conditions that could be easily combined and customized to match your needs [link](#Throttlers).
-- [x] Easy to integrate, Gohalt provides numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
+- [x] Easy to integrate, Gohalt provides separate package with numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
 - [x] Metrics awareness, Gohalt could use Prometheus metrics as a conditions for throttling.
 - [x] Queueing and delayed processing, Gohalt supports throttling queueing which means you can easily save throttled query to rabbitmq/kafka stream to process it later.
 
 - [ ] Durable storage, Gohalt has embedded k/v storage to provide thtottling persistence and durability.
 - [ ] Meta awareness, Gohalt provides easy way to access inner throttlers state in form of meta that can be later exposed to logging, headers, etc. 
-
-## Concepts
-
-Gohalt uses `Throttler` as the core interface for all derived throttlers and surronding tools.
-```go
-// Throttler defines core gohalt throttler abstraction and exposes pair of counterpart methods: `Acquire` and `Release`.
-type Throttler interface {
-	// Acquire takes a part of throttling quota or returns error if throttling quota is drained
-	// it needs to be called right before shared resource acquire.
-	Acquire(context.Context) error
-	// Release puts a part of throttling quota back or returns error if this is not possible
-	// it needs to be called just after shared resource release.
-	Release(context.Context) error
-}
-```
-`Throttler` interface exposes pair of counterpart methods: `Acquire` takes a part of *throttling quota* or returns error if *throttling quota* is drained and needs to be called right before shared resource acquire; `Release` puts a part of *throttling quota* back or returns error if this is not possible and needs to be called just after shared resource release; **Note:** all derived throttler implementations are thread safe, so they could be used concurrently without additional locking. **Note:** all acquired throttlers should be released exatly the same amount of times they have been acquired. **Note:** despite throttler `Release` method has the same signature as `Acquire` has, `Release` implementations should try to handle any internal error gracefully and return error back rarely, nevertheless all errors returned by `Release` should be handeled by client.
-
-In Gohalt throtllers could be easily combined with each other to build complex pipelines. There are multiple composite throttlers (all, any, ring, pattern, not, etc) as well as leaf throttlers (timed, latency, monitor, metric, percentile, etc) to work with in Gohalt. If you don't find in [existing throttlers](#Throttlers) the one that fits your needs you can create custom throttler by implementing `Throttler` interface. Such custom throttler should work with existing Gohalt throttlers and tools out of box.
-
-Gohalt includes multiple supporting surrounding tools to make throttling more sugary.
-```go
-// Runnable defined by typical abstract async func signature.
-// Runnable is used by `Runner` as a subject for execution.
-type Runnable func(context.Context) error
-// Runner defines abstraction to execute a set of `Runnable`
-// and return possible execution error back.
-// Runner is designed to simplify work with throttlers
-// by managing `Acquire`/`Release` loop.
-type Runner interface {
-	// Run executes single prodived `Runnable` instance.
-	Run(Runnable)
-	// Result returns possible execution error back.
-	Result() error
-}
-```
-`Runnable` and `Runner` define slim abstraction for executable and executor in Gohalt. `Runner` insterface aims to provide similar interface as [errgroup.Group](https://godoc.org/golang.org/x/sync/errgroup#Group) does. So to run a single executable use `Run` to wait and get result use `Result`.
-There are two runners implementations in Gohalt:
-- sync `func NewRunnerSync(ctx context.Context, thr Throttler) Runner`
-- async `func NewRunnerAsync(ctx context.Context, thr Throttler) Runner`
-Both implementation accept throttler and context as input arguments and handle all throttling cycle internaly. This way client donesn't need to call neither `Acquire` nor `Release` manually, all this is done by the runner. This way the only thing that needs to be done to add throttling to existing code wrap existing executable by `Runnable`. The only difference between sync and async runner is that the `async` runner starts each new `Runnable` inside new goroutine and uses locks for its imternal state. **Note:** You can't use sync runner in async fashion with `go syncr.Run(func(context.Context) error{})` this will cause data race, use async runner instead `async.Run(func(context.Context) error{})`.
-
-Last but not least Gohalt uses context heavily inside and there are multiple helpers to provide data via context for throttles, see [throttles list](#Throttlers) to know when to use them.
-```go
-// WithTimestamp adds the provided timestamp to the provided context
-// to determine latency between `Acquire` and `Release`.
-// Resulted context is used by: `latency` and `percentile` throtttlers.
-func WithTimestamp(ctx context.Context, ts time.Time) context.Context
-// WithPriority adds the provided priority to the provided context
-// to differ `Acquire` priority levels.
-// Resulted context is used by: `priority` throtttler.
-func WithPriority(ctx context.Context, priority uint8) context.Context
-// WithKey adds the provided key to the provided context
-// to add additional call identifier to context.
-// Resulted context is used by: `pattern` throtttler.
-func WithKey(ctx context.Context, key string) context.Context
-// WithMessage adds the provided message to the provided context
-// to add additional message that need to be used to context.
-// Resulted context is used by: `enqueue` throtttler.
-func WithMessage(ctx context.Context, message interface{}) context.Context
-// WithMarshaler adds the provided marshaler to the provided context
-// to add additional message marshaler that need to be used to context.
-// Resulted context is used by: `enqueue` throtttler.
-// Used in pair with `WithMessage`.
-func WithMarshaler(ctx context.Context, mrsh Marshaler) context.Context
-// WithParams facade call that respectively calls:
-// - `WithTimestamp`
-// - `WithPriority`
-// - `WithKey`
-// - `WithMessage`
-// - `WithMarshaler`
-func WithParams(ctx context.Context, ts time.Time, priority uint8, key string, message interface{}, marshaler Marshaler) context.Context
-```
-Also there is yet another throttling sugar `func WithThrottler(ctx context.Context, thr Throttler, freq time.Duration) context.Context` related to context. Which defines context implementation that uses parrent context plus throttler internally. Using it you can keep typical context patterns for cancelation handling and apply and combine it with throttling. 
-```go
-select {
-	case <-ctx.Done():
-		return ctx.Error()
-	default:
-}
-```
-If internal context throttler is throttling context done chanel will be closed respectively. **Note** such behavior is implemented by throttler long pooling with the specified frequency, so efficiently there will be additional throttling user in form of long pooling goroutine.
-
-```go
-// complex throttler example
-thr := NewThrottlerAll( // throttles only if all children throttle
-	NewThrottlerPattern(
-		Pattern{ // use throttler only if provided key matches `192.*.*.*` submask
-			Pattern: regexp.MustCompile(`192\.[0-9]+\.[0-9]+\.[0-9]+`),
-			Throttler: NewThrottlerAny( // throttles if any children throttles
-				// throttles only if latency is above 50 millisecond
-				NewThrottlerLatency(50*time.Millisecond, 5*time.Second),
-				// throttles only if cpu usage is above 70%
-				NewThrottlerMonitor(NewMonitorSystem(time.Minute), Stats{CPUUsage: 0.7}),
-			),
-		},
-	),
-	// throttles each not 3rd call
-	NewThrottlerNot(NewThrottlerEach(3)),
-	// enqueues provided message to queue
-	NewThrottlerEnqueue(NewEnqueuerRabbit("amqp://user:pass@localhost:5672/vhost", "queue", time.Minute)),
-)
-```
 
 ## Throttlers
 
@@ -192,5 +93,5 @@ thr := NewThrottlerAll( // throttles only if all children throttle
 
 ## Licence
 
-Gohalt is licensed under the MIT License.  
+Gohaltlib is licensed under the MIT License.  
 See [LICENSE](LICENSE) for the full license text.
