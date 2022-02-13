@@ -20,17 +20,6 @@
 
 Gohalt is simple and convenient yet powerful and efficient throttling go library. Gohalt provides various throttlers and surronding tools to build throttling pipelines and rate limiters of any complexity adjusted to your specific needs. Gohalt provides an easy way to integrate throttling and rate limiting with your infrastructure through built in middlewares.
 
-## Features
-
-- [x] Blastly fast and efficient, Gohalt has minimal performance overhead, it was design with performance as the primary goal.
-- [x] Flexible and powerful, Gohalt supports numbers of different throttling strategies and conditions that could be easily combined and customized to match your needs [link](https://github.com/1pkg/gohalt#Throttlers).
-- [x] Easy to integrate, Gohalt provides separate package with numbers of built in middlewares for simple (couple lines of code) integrations with stdlib and other libraries, among which are: io, rpc/grpc, http, sql, gin, [etc](#Integrations).
-- [x] Metrics awareness, Gohalt could use Prometheus metrics as a conditions for throttling.
-- [x] Queueing and delayed processing, Gohalt supports throttling queueing which means you can easily save throttled query to rabbitmq/kafka stream to process it later.
-
-- [ ] Durable storage, Gohalt has embedded k/v storage to provide thtottling persistence and durability.
-- [ ] Meta awareness, Gohalt provides easy way to access inner throttlers state in form of meta that can be later exposed to logging, headers, etc. 
-
 ## Integrations
 
 | Library | Adapter |
