@@ -4,8 +4,7 @@
 
 # Gohaltlib 👮‍♀🔧: [Gohalt](https://github.com/1pkg/gohalt) 3rd Party Integrations library
 
-[![lint](https://github.com/1pkg/gohaltlib/workflows/lint/badge.svg)](https://github.com/1pkg/gohaltlib/actions?query=workflow%3Alint+branch%3Amaster+)
-[![test](https://github.com/1pkg/gohaltlib/workflows/test/badge.svg)](https://github.com/1pkg/gohaltlib/actions?query=workflow%3Atest+branch%3Amaster+)
+[![lint](https://github.com/1pkg/gohaltlib/workflows/lint/badge.svg?cache=1)](https://github.com/1pkg/gohaltlib/actions?query=workflow%3Alint+branch%3Amaster+)
 [![report](https://goreportcard.com/badge/github.com/1pkg/gohaltlib?cache=1)](https://goreportcard.com/report/github.com/1pkg/gohaltlib)
 [![version](https://img.shields.io/github/go-mod/go-version/1pkg/gohaltlib?cache=1)](https://github.com/1pkg/gohaltlib/blob/master/go.mod)
 [![license](https://img.shields.io/github/license/1pkg/gohaltlib?cache=1)](LICENSE)
